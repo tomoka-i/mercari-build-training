@@ -43,6 +43,7 @@ func (s Server) Run() int {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", h.Hello)
 	mux.HandleFunc("POST /items", h.AddItem)
+	mux.HandleFunc("GET /items", h.GetItem) // STEP 4-3 implement the GET /items endpoint
 	mux.HandleFunc("GET /images/{filename}", h.GetImage)
 
 	// start the server
@@ -78,7 +79,7 @@ func (s *Handlers) Hello(w http.ResponseWriter, r *http.Request) {
 
 type AddItemRequest struct {
 	Name string `form:"name"`
-	// Category string `form:"category"` // STEP 4-2: add a category field
+	Category string `form:"category"` // STEP 4-2: add a category field
 	Image []byte `form:"image"` // STEP 4-4: add an image field
 }
 
@@ -90,7 +91,7 @@ type AddItemResponse struct {
 func parseAddItemRequest(r *http.Request) (*AddItemRequest, error) {
 	req := &AddItemRequest{
 		Name: r.FormValue("name"),
-		// STEP 4-2: add a category field
+		Category: r.FormValue("category"), // STEP 4-2: add a category field
 	}
 
 	// STEP 4-4: add an image field
@@ -101,8 +102,43 @@ func parseAddItemRequest(r *http.Request) (*AddItemRequest, error) {
 	}
 
 	// STEP 4-2: validate the category field
+	if req.Category == "" {
+		return nil, errors.New("category is requred")
+	}
+
 	// STEP 4-4: validate the image field
 	return req, nil
+}
+
+func saveToJSONFile(item *Item) error {
+	// Open the file in read-write mode (if it does't exist create an empty file)
+	file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	//get current item list, itemList struct is in infla.go
+	var itemList ItemList
+
+	//if the file is not empty, decode itemList
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&itemList)
+	if err != nil && err.Error() != "EOF" { // if it is empty, ignore EOF error
+		return err
+	}
+
+	// add new item
+	itemList.Items = append(itemList.Items, *item)
+
+	//move to the beginning of the file to overwrite the content
+	file.Seek(0, 0)
+	file.Truncate(0)
+
+	//store item list to the file again
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ") // set the indentation
+	return encoder.Encode(itemList)
 }
 
 // AddItem is a handler to add a new item for POST /items .
@@ -125,13 +161,12 @@ func (s *Handlers) AddItem(w http.ResponseWriter, r *http.Request) {
 
 	item := &Item{
 		Name: req.Name,
-		// STEP 4-2: add a category field
+		Category: req.Category, // STEP 4-2: add a category field
 		// STEP 4-4: add an image field
 	}
 	message := fmt.Sprintf("item received: %s", item.Name)
 	slog.Info(message)
 
-	// STEP 4-2: add an implementation to store an item
 	err = s.itemRepo.Insert(ctx, item)
 	if err != nil {
 		slog.Error("failed to store item: ", "error", err)
@@ -139,8 +174,53 @@ func (s *Handlers) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := saveToJSONFile(item); err != nil { // STEP 4-2: add an implementation to store an item
+		slog.Error("failed to store item to JSON file: ", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 	resp := AddItemResponse{Message: message}
 	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type GetItemResponse struct {
+	Items []Item `json:"items"`
+}
+
+func loadFromJSONFile() ([]Item, error) {
+	file, err := os.Open("items.json")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// get current item list
+	var itemList ItemList
+
+	//decode itemList
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&itemList)
+	if err != nil {
+		return nil, err
+	}
+
+	return itemList.Items, nil
+}
+
+// GetItem is a handler to show items stored in images.json for GET /items .
+func (s *Handlers) GetItem(w http.ResponseWriter, r *http.Request) {
+	items, err := loadFromJSONFile()
+	if err != nil {
+		slog.Error("Failed to load items: ", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	resp := GetItemResponse{Items: items} //this is the data returned as the response
+	err = json.NewEncoder(w).Encode(resp) //encode resp into JSON format and writes it to the HTTP response (w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
