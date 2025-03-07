@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
+	"encoding/json"
 	// STEP 5-1: uncomment this line
 	// _ "github.com/mattn/go-sqlite3"
 )
@@ -26,6 +28,7 @@ type ItemList struct {
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -package=${GOPACKAGE} -destination=./mock_$GOFILE
 type ItemRepository interface {
 	Insert(ctx context.Context, item *Item) error
+	LoadFromJSONFile() ([]Item, error)
 }
 
 // itemRepository is an implementation of ItemRepository
@@ -42,8 +45,58 @@ func NewItemRepository() ItemRepository {
 // Insert inserts an item into the repository.
 func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
 	// STEP 4-2: add an implementation to store an item
+	// Open the file in read-write mode (if it does't exist create an empty file)
+	file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	//get current item list, itemList struct is in infla.go
+	var itemList ItemList
+
+	//if the file is not empty, decode itemList
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&itemList)
+	if err != nil && err.Error() != "EOF" { // if it is empty, ignore EOF error
+		return err
+	}
+
+	// add new item
+	itemList.Items = append(itemList.Items, *item)
+
+	//move to the beginning of the file to overwrite the content
+	file.Seek(0, 0)
+	file.Truncate(0)
+
+	//store item list to the file again
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ") // set the indentation
+	if err := encoder.Encode(itemList); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (i *itemRepository) LoadFromJSONFile() ([]Item, error) {
+	file, err := os.Open("items.json")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// get current item list
+	var itemList ItemList
+
+	//decode itemList
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&itemList)
+	if err != nil {
+		return nil, err
+	}
+
+	return itemList.Items, nil
 }
 
 // StoreImage stores an image and returns an error if any.

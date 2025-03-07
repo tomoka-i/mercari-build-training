@@ -110,37 +110,6 @@ func parseAddItemRequest(r *http.Request) (*AddItemRequest, error) {
 	return req, nil
 }
 
-func saveToJSONFile(item *Item) error {
-	// Open the file in read-write mode (if it does't exist create an empty file)
-	file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	//get current item list, itemList struct is in infla.go
-	var itemList ItemList
-
-	//if the file is not empty, decode itemList
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&itemList)
-	if err != nil && err.Error() != "EOF" { // if it is empty, ignore EOF error
-		return err
-	}
-
-	// add new item
-	itemList.Items = append(itemList.Items, *item)
-
-	//move to the beginning of the file to overwrite the content
-	file.Seek(0, 0)
-	file.Truncate(0)
-
-	//store item list to the file again
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ") // set the indentation
-	return encoder.Encode(itemList)
-}
-
 // AddItem is a handler to add a new item for POST /items .
 func (s *Handlers) AddItem(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -167,16 +136,12 @@ func (s *Handlers) AddItem(w http.ResponseWriter, r *http.Request) {
 	message := fmt.Sprintf("item received: %s", item.Name)
 	slog.Info(message)
 
+	// STEP 4-2: add an implementation to store an item
 	err = s.itemRepo.Insert(ctx, item)
 	if err != nil {
 		slog.Error("failed to store item: ", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	if err := saveToJSONFile(item); err != nil { // STEP 4-2: add an implementation to store an item
-		slog.Error("failed to store item to JSON file: ", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	resp := AddItemResponse{Message: message}
@@ -191,29 +156,9 @@ type GetItemResponse struct {
 	Items []Item `json:"items"`
 }
 
-func loadFromJSONFile() ([]Item, error) {
-	file, err := os.Open("items.json")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	// get current item list
-	var itemList ItemList
-
-	//decode itemList
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&itemList)
-	if err != nil {
-		return nil, err
-	}
-
-	return itemList.Items, nil
-}
-
 // GetItem is a handler to show items stored in images.json for GET /items .
 func (s *Handlers) GetItem(w http.ResponseWriter, r *http.Request) {
-	items, err := loadFromJSONFile()
+	items, err := s.itemRepo.LoadFromJSONFile() //use ItemRepository
 	if err != nil {
 		slog.Error("Failed to load items: ", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -238,7 +183,6 @@ func (s *Handlers) storeImage(image []byte) (filePath string, err error) {
 	// - check if the image already exists
 	// - store image
 	// - return the image file path
-
 	return
 }
 
