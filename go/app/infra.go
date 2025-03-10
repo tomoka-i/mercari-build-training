@@ -8,8 +8,20 @@ import (
 	"path/filepath"
 	"fmt"
 	// STEP 5-1: uncomment this line
-	// _ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
+	"database/sql"
 )
+
+var db *sql.DB
+
+//to initialize the database connection
+func init() {
+	var err error
+	db, err = sql.Open("sqlite3", "./db/mercari.sqlite3")
+	if err != nil {
+		panic(err)
+	}
+}
 
 var errImageNotFound = errors.New("image not found")
 
@@ -31,7 +43,7 @@ type ItemList struct {
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -package=${GOPACKAGE} -destination=./mock_$GOFILE
 type ItemRepository interface {
 	Insert(ctx context.Context, item *Item) error
-	LoadFromJSONFile() ([]Item, error)
+	LoadFromDatabase() ([]Item, error)
 }
 
 // itemRepository is an implementation of ItemRepository
@@ -47,6 +59,12 @@ func NewItemRepository() ItemRepository {
 
 // Insert inserts an item into the repository.
 func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
+	//store item to the database
+	_, err := db.ExecContext(ctx, "INSERT INTO items (name, category, image_name) VALUES (?, ?, ?)", item.Name, item.Category, item.Image)
+	if err != nil {
+		return err
+	}
+
 	// STEP 4-2: add an implementation to store an item
 	// Open the file in read-write mode (if it does't exist create an empty file)
 	file, err := os.OpenFile(i.fileName, os.O_RDWR|os.O_CREATE, 0666)
@@ -82,24 +100,23 @@ func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
 	return nil
 }
 
-func (i *itemRepository) LoadFromJSONFile() ([]Item, error) {
-	file, err := os.Open(i.fileName)
+// Step 5-1 LoadFromDatabase loads items from the database.
+func (i *itemRepository) LoadFromDatabase() ([]Item, error) {
+	rows, err := db.Query("SELECT id, name, category, image_name FROM items")
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer rows.Close()
 
-	// get current item list
-	var itemList ItemList
-
-	//decode itemList
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&itemList)
-	if err != nil {
-		return nil, err
-	}
-
-	return itemList.Items, nil
+	var items []Item
+	for rows.Next() {
+		var item Item
+		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Image); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}	
+	return items, nil
 }
 
 // StoreImage stores an image and returns an error if any.

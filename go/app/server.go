@@ -181,7 +181,7 @@ type GetItemResponse struct {
 
 // GetItem is a handler to show items stored in images.json for GET /items .
 func (s *Handlers) GetItem(w http.ResponseWriter, r *http.Request) {
-	items, err := s.itemRepo.LoadFromJSONFile() //use ItemRepository
+	items, err := s.itemRepo.LoadFromDatabase() //use ItemRepository
 	if err != nil {
 		slog.Error("Failed to load items: ", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -209,27 +209,27 @@ func (s *Handlers) GetItemByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	index := id - 1
-
-	if index < 0 {
-		http.Error(w, "Item ID is out of range", http.StatusNotFound)
-		return
-	}
-
-	items, err := s.itemRepo.LoadFromJSONFile()
+	items, err := s.itemRepo.LoadFromDatabase()
 	if err != nil {
 		slog.Error("failed to load items: ", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}	
 
-	//check if the item_id is out of range
-	if index >= len(items) {
+	var foundItem *Item
+	for _, item := range items {
+		if item.ID == id {
+			foundItem = &item
+			break
+		}
+	}
+
+	if foundItem == nil {
 		http.Error(w, "Item not found", http.StatusNotFound)
 		return
 	}
 
-	resp := GetItemByIDResponse{Item: items[index]}
+	resp := GetItemByIDResponse{Item: *foundItem}
 	err = json.NewEncoder(w).Encode(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
