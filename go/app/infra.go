@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"encoding/json"
+	"path/filepath"
+	"fmt"
 	// STEP 5-1: uncomment this line
 	// _ "github.com/mattn/go-sqlite3"
 )
@@ -15,6 +17,7 @@ type Item struct {
 	ID   int    `db:"id" json:"-"`
 	Name string `db:"name" json:"name"`
 	Category string `db:"category" json:"category"`
+	Image string `db:"image" json:"image"`
 }
 
 //to add items under "items" key
@@ -46,7 +49,7 @@ func NewItemRepository() ItemRepository {
 func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
 	// STEP 4-2: add an implementation to store an item
 	// Open the file in read-write mode (if it does't exist create an empty file)
-	file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0666)
+	file, err := os.OpenFile(i.fileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -80,7 +83,7 @@ func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
 }
 
 func (i *itemRepository) LoadFromJSONFile() ([]Item, error) {
-	file, err := os.Open("items.json")
+	file, err := os.Open(i.fileName)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +104,15 @@ func (i *itemRepository) LoadFromJSONFile() ([]Item, error) {
 
 // StoreImage stores an image and returns an error if any.
 // This package doesn't have a related interface for simplicity.
-func StoreImage(fileName string, image []byte) error {
+func StoreImage(dirPath string, fileName string, image []byte) error {
 	// STEP 4-4: add an implementation to store an image
+	filePath := filepath.Join(dirPath, fileName)
+	
+	//write image to the file
+	if err := os.WriteFile(filePath, image, 0666); err != nil {
+		return fmt.Errorf("failed to write image file: %w", err)
+	}
 
+	// Return nil if everything succeeds
 	return nil
 }

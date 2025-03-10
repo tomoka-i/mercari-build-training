@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 )
 
 type Server struct {
@@ -95,6 +98,17 @@ func parseAddItemRequest(r *http.Request) (*AddItemRequest, error) {
 	}
 
 	// STEP 4-4: add an image field
+	file, _, err := r.FormFile("image")
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to get image: %w", err)
+ 	}
+	defer file.Close()
+
+	imageData, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read image: %w", err)
+	}
+	req.Image = imageData
 
 	// validate the request
 	if req.Name == "" {
@@ -107,6 +121,10 @@ func parseAddItemRequest(r *http.Request) (*AddItemRequest, error) {
 	}
 
 	// STEP 4-4: validate the image field
+	if len(req.Image) == 0 {
+		return nil, errors.New("image is requred")
+	}
+
 	return req, nil
 }
 
@@ -121,17 +139,19 @@ func (s *Handlers) AddItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// STEP 4-4: uncomment on adding an implementation to store an image
-	// fileName, err := s.storeImage(req.Image)
-	// if err != nil {
-	// 	slog.Error("failed to store image: ", "error", err)
-	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
+	fileName, err := s.storeImage(req.Image)
+	if err != nil {
+		slog.Error("failed to store image: ", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	imageFileName := filepath.Base(fileName)
 
 	item := &Item{
 		Name: req.Name,
 		Category: req.Category, // STEP 4-2: add a category field
-		// STEP 4-4: add an image field
+		Image: imageFileName, // STEP 4-4: add an image field
 	}
 	message := fmt.Sprintf("item received: %s", item.Name)
 	slog.Info(message)
@@ -179,11 +199,25 @@ func (s *Handlers) storeImage(image []byte) (filePath string, err error) {
 	// STEP 4-4: add an implementation to store an image
 	// TODO:
 	// - calc hash sum
+	hash := sha256.Sum256(image)
+	hashedValue := hex.EncodeToString(hash[:])
+	fileName := hashedValue + ".jpg"
+
 	// - build image file path
+	filePath = filepath.Join(s.imgDirPath, fileName)
+
 	// - check if the image already exists
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
+	}
+
 	// - store image
+	if err := StoreImage(s.imgDirPath,fileName, image); err != nil {
+		return "", err
+	}
+	
 	// - return the image file path
-	return
+	return filePath, nil
 }
 
 type GetImageRequest struct {
