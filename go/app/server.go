@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"strconv"
 )
 
 type Server struct {
@@ -25,11 +26,12 @@ type Server struct {
 // This method returns 0 if the server started successfully, and 1 otherwise.
 func (s Server) Run() int {
 	// set up logger
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
 	// STEP 4-6: set the log level to DEBUG
-	slog.SetLogLoggerLevel(slog.LevelInfo)
-
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug, //display log messages at the debug level and above.
+	}))
+	slog.SetDefault(logger)
+	
 	// set up CORS settings
 	frontURL, found := os.LookupEnv("FRONT_URL")
 	if !found {
@@ -48,6 +50,7 @@ func (s Server) Run() int {
 	mux.HandleFunc("POST /items", h.AddItem)
 	mux.HandleFunc("GET /items", h.GetItem) // STEP 4-3 implement the GET /items endpoint
 	mux.HandleFunc("GET /images/{filename}", h.GetImage)
+	mux.HandleFunc("GET /items/{item_id}", h.GetItemByID) //STEP 4-5: implement the GET /items/{item_id} endpoint
 
 	// start the server
 	slog.Info("http server started on", "port", s.Port)
@@ -186,6 +189,48 @@ func (s *Handlers) GetItem(w http.ResponseWriter, r *http.Request) {
 
 	resp := GetItemResponse{Items: items} //this is the data returned as the response
 	err = json.NewEncoder(w).Encode(resp) //encode resp into JSON format and writes it to the HTTP response (w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+//only returns one item
+type GetItemByIDResponse struct {
+	Item Item `json:"item"`
+}
+
+func (s *Handlers) GetItemByID(w http.ResponseWriter, r *http.Request) {
+	//get the item_id from the path parameter
+	idStr := r.PathValue("item_id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	index := id - 1
+
+	if index < 0 {
+		http.Error(w, "Item ID is out of range", http.StatusNotFound)
+		return
+	}
+
+	items, err := s.itemRepo.LoadFromJSONFile()
+	if err != nil {
+		slog.Error("failed to load items: ", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}	
+
+	//check if the item_id is out of range
+	if index >= len(items) {
+		http.Error(w, "Item not found", http.StatusNotFound)
+		return
+	}
+
+	resp := GetItemByIDResponse{Item: items[index]}
+	err = json.NewEncoder(w).Encode(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
