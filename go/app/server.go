@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"io"
 	"strconv"
+	"database/sql"
 )
 
 type Server struct {
@@ -42,7 +43,7 @@ func (s Server) Run() int {
 
 	// set up handlers
 	itemRepo := NewItemRepository()
-	h := &Handlers{imgDirPath: s.ImageDirPath, itemRepo: itemRepo}
+	h := &Handlers{imgDirPath: s.ImageDirPath, itemRepo: itemRepo, db: db}
 
 	// set up routes
 	mux := http.NewServeMux()
@@ -51,6 +52,7 @@ func (s Server) Run() int {
 	mux.HandleFunc("GET /items", h.GetItem) // STEP 4-3 implement the GET /items endpoint
 	mux.HandleFunc("GET /images/{filename}", h.GetImage)
 	mux.HandleFunc("GET /items/{item_id}", h.GetItemByID) //STEP 4-5: implement the GET /items/{item_id} endpoint
+	mux.HandleFunc("GET /search", h.SearchItem) //STEP 5-2: implement the GET /search/{keyword} endpoint
 
 	// start the server
 	slog.Info("http server started on", "port", s.Port)
@@ -67,6 +69,7 @@ type Handlers struct {
 	// imgDirPath is the path to the directory storing images.
 	imgDirPath string
 	itemRepo   ItemRepository
+	db         *sql.DB
 }
 
 type HelloResponse struct {
@@ -233,6 +236,46 @@ func (s *Handlers) GetItemByID(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+var SearchItemResponse struct {
+	Item Item `json:"item"`
+}
+
+func (s *Handlers) SearchItem(w http.ResponseWriter, r *http.Request) {
+	//get the keyword from the query parameter
+	keyword := r.URL.Query().Get("keyword")
+	if keyword == "" {
+		http.Error(w, "Keyword is required", http.StatusBadRequest)
+		return
+	}
+
+	//use "LIKE" to search for items that contain the keyword
+	rows, err := s.db.Query("SELECT id, name, category, image_name FROM items WHERE name LIKE ?", "%"+keyword+"%")
+	if err != nil {
+		slog.Error("items not found: ", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []Item
+	for rows.Next() {
+		var item Item
+		err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Image)
+		if err != nil {
+			slog.Error("failed to scan item: ", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		items = append(items, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(items); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
 }
