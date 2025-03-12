@@ -59,8 +59,28 @@ func NewItemRepository() ItemRepository {
 
 // Insert inserts an item into the repository.
 func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
+	var categoryID int
+
+	//check if the category exists in the database
+	err := db.QueryRow("SELECT id FROM categories WHERE name = ?", item.Category).Scan(&categoryID)
+	//if the category is not found, insert it into the database
+	if err == sql.ErrNoRows {
+		result, err := db.ExecContext(ctx, "INSERT INTO categories (name) VALUES (?)", item.Category)
+		if err != nil {
+			return err
+		}
+		//get the id of the inserted category
+		categoryID64, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		categoryID = int(categoryID64)
+	} else if err != nil {
+		return err
+	}
+
 	//store item to the database
-	_, err := db.ExecContext(ctx, "INSERT INTO items (name, category, image_name) VALUES (?, ?, ?)", item.Name, item.Category, item.Image)
+	_, err = db.ExecContext(ctx, "INSERT INTO items (name, category_id, image_name) VALUES (?, ?, ?)", item.Name, categoryID, item.Image)
 	if err != nil {
 		return err
 	}
@@ -102,7 +122,11 @@ func (i *itemRepository) Insert(ctx context.Context, item *Item) error {
 
 // Step 5-1 LoadFromDatabase loads items from the database.
 func (i *itemRepository) LoadFromDatabase() ([]Item, error) {
-	rows, err := db.Query("SELECT id, name, category, image_name FROM items")
+	rows, err := db.Query(`
+		SELECT items.id, items.name, categories.name AS category, items.image_name
+		FROM items
+		JOIN categories ON items.category_id = categories.id
+	`)
 	if err != nil {
 		return nil, err
 	}
