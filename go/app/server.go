@@ -253,7 +253,12 @@ func (s *Handlers) SearchItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//use "LIKE" to search for items that contain the keyword
-	rows, err := s.db.Query("SELECT id, name, category, image_name FROM items WHERE name LIKE ?", "%"+keyword+"%")
+	rows, err := s.db.Query(`
+		SELECT items.id, items.name, categories.name AS category, items.image_name
+		FROM items
+		JOIN categories ON items.category_id = categories.id
+		WHERE items.name LIKE ?`, "%"+keyword+"%")
+	
 	if err != nil {
 		slog.Error("items not found: ", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
