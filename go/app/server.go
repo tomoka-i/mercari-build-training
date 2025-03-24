@@ -42,7 +42,7 @@ func (s Server) Run() int {
 	// STEP 5-1: set up the database connection
 
 	// set up handlers
-	itemRepo := NewItemRepository()
+	itemRepo := NewItemRepository("items.json", db)
 	h := &Handlers{imgDirPath: s.ImageDirPath, itemRepo: itemRepo, db: db}
 
 	// set up routes

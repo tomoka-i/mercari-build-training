@@ -50,11 +50,12 @@ type ItemRepository interface {
 type itemRepository struct {
 	// fileName is the path to the JSON file storing items.
 	fileName string
+	db *sql.DB
 }
 
 // NewItemRepository creates a new itemRepository.
-func NewItemRepository() ItemRepository {
-	return &itemRepository{fileName: "items.json"}
+func NewItemRepository(fileName string, db *sql.DB) ItemRepository {
+	return &itemRepository{fileName: fileName, db: db,}
 }
 
 // Insert inserts an item into the repository.
