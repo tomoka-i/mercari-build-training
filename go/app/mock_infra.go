@@ -53,3 +53,18 @@ func (mr *MockItemRepositoryMockRecorder) Insert(ctx, item any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Insert", reflect.TypeOf((*MockItemRepository)(nil).Insert), ctx, item)
 }
+
+// LoadFromDatabase mocks base method.
+func (m *MockItemRepository) LoadFromDatabase() ([]Item, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadFromDatabase")
+	ret0, _ := ret[0].([]Item)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadFromDatabase indicates an expected call of LoadFromDatabase.
+func (mr *MockItemRepositoryMockRecorder) LoadFromDatabase() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadFromDatabase", reflect.TypeOf((*MockItemRepository)(nil).LoadFromDatabase))
+}
